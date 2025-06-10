@@ -155,20 +155,98 @@ def print_timetable(combo):
     codes = [sec.code for sec in combo]
     print("\n 과목코드 : ", ", ".join(codes))
 
+# 사용자로부터 시간표 조건을 입력받는 함수
+def select_preference():
+    while True :
+        print("원하는 시간표 조건을 선택하세요 :")
+        print("1. 늦게 시작하는 시간표")
+        print("2. 수업 사이 빈 시간이 적은 시간표")
+        print("3. 공강 요일이 있는 시간표")
+        choice = input("번호 입력 (1~3): ")
+        if choice in ["1","2","3"] :
+            return int(choice)
+        else :
+            print("⚠️ 잘못 선택하셨습니다. 다시 입력하세요.\n")
+
+# 조합된 시간표를 요일별로 정리하는 함수 (출력/정렬용)
+def summarize_schedule(combo):
+    times_by_day = {}
+
+    for sec in combo:
+        for day, start, end in sec.time_slots:
+            if day not in times_by_day:
+                times_by_day[day] = []
+            times_by_day[day].append((start, end))
+
+    # 요일별 시간 정렬
+    for day in times_by_day:
+        times_by_day[day].sort() # 시작 시간 기준 정렬
+
+    return times_by_day
+
+def sort_by_late_start(valid_combinations): # option 1 : 늦게 시작하는 시간표
+    def score(combo):
+        times = summarize_schedule(combo)
+        # 가장 이른 시작 시간들 중 가장 늦은 것 찾기
+        earliest_start_times = [min(s[0] for s in times[day]) for day in times]
+        return max(earliest_start_times)  # 가장 늦게 시작하는 날
+
+    return sorted(valid_combinations, key=score, reverse=True)
+
+def sort_by_short_gaps(valid_combinations): # option 2 : 수업 사이 빈 시간이 적은 시간표
+    def score(combo):
+        times = summarize_schedule(combo)
+        total_gap = 0
+        for day in times:
+            slots = times[day]
+            for i in range(1, len(slots)):
+                gap = slots[i][0] - slots[i - 1][1]
+                total_gap += gap
+        return total_gap  # gap이 적을수록 좋음
+
+    return sorted(valid_combinations, key=score)
+
+def sort_by_free_day(valid_combinations): # option 3 : 공강날이 많은 시간표
+    def score(combo):
+        times = summarize_schedule(combo)
+        return len(times)  # 요일 수가 적을수록 공강 많음
+
+    return sorted(valid_combinations, key=score)
+
 # 실행 시작 지점
 def main(): 
     filename = "subjects.txt"
     sections = load_subjects_from_file(filename)
-
+    
+    option = select_preference()
     grouped = group_sections_by_subject(sections)
     combinations = generate_combinations(grouped)
     valid_combinations = filter_valid_combinations(combinations)
-
     print(f"✅ 충돌 없는 조합 수: {len(valid_combinations)}\n")
-    print("\n🗓️ 최적 시간표 추천 결과 :")
-    for i in range(min(5, len(valid_combinations))):
-        print(f"\n[추천 시간표 {i+1}번]")
-        print_timetable(valid_combinations[i])
+
+    # 조건 선택 후 정렬
+    if option == 1:
+        print("🔹 늦게 시작하는 시간표를 생성합니다.")
+        sorted_combos = sort_by_late_start(valid_combinations)
+    elif option == 2:
+        print("🔹 수업 사이 빈 시간이 적은 시간표를 생성합니다.")
+        sorted_combos = sort_by_short_gaps(valid_combinations)
+    elif option == 3:
+        print("🔹 공강 요일이 있는 시간표를 생성합니다.")
+        # 공강 요일이 있는 조합이 하나도 없을 경우 자동 대체
+        has_free_day = any(len(summarize_schedule(combo)) < 5 for combo in valid_combinations)
+        if not has_free_day:
+            print("⚠️ 공강 요일이 있는 조합이 없습니다. 대신 '수업 사이 빈 시간이 적은 시간표'로 대체됩니다.")
+            sorted_combos = sort_by_short_gaps(valid_combinations)
+        else:
+            sorted_combos = sort_by_free_day(valid_combinations)
+
+    print("\n🗓️ 최적 시간표 추천 결과 (상위 5개):")
+    i = 1
+    for combo in sorted_combos[:5]:
+        print(f"\n[추천 시간표 {i}]")
+        print_timetable(combo)
+        i += 1
 
 if __name__ == "__main__":
     main()
